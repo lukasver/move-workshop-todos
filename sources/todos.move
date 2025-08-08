@@ -12,15 +12,16 @@ use todos::errors;
 public struct TodoRegistry has key {
   id: UID,
   idx: u64,
-  todos_map: VecMap<u64,Todo>,
+  inner: VecMap<u64,Todo>,
   owner: address,
 }
 
-public struct Todo has store, copy, drop { 
+// should add drop?
+public struct Todo has store, copy { 
     idx: u64,
     title: String,
     completed: bool,
-    // created_at: u64,
+    // created_at: u64, probably good to check Clock object
     // updated_at: Option<u64>,
 }
 
@@ -47,25 +48,28 @@ public fun new(otw: SUI_WORKSHOP_TODOS, ctx: &mut TxContext): TodoRegistry {
   TodoRegistry {
     id: object::new(ctx),
     idx: 0,
-    todos_map: vec_map::empty(),
+    inner: vec_map::empty(),
     owner: ctx.sender()
   }
 }
 
 // Registry methods
-public fun get_todos(reg: &TodoRegistry): vector<Todo> {
-  let (_, values) = reg.todos_map.into_keys_values();
+public fun get_todos(reg: &TodoRegistry, ctx: &TxContext): vector<Todo> {
+  isOwner(reg, ctx);
+  let (_, values) = reg.inner.into_keys_values();
   values
 }
 public fun get_todos_count(reg: &TodoRegistry): u64 {
-  reg.todos_map.size()
+  reg.inner.size()
 }
+
 public fun get_todo(reg: &TodoRegistry, idx: u64, ctx: &mut TxContext): Todo {
   isOwner(reg, ctx);
   assert!(idx < reg.idx, errors::todo_not_found!());
-  assert!(reg.todos_map.contains(&idx), errors::todo_not_found!());
-  *reg.todos_map.get(&idx)
+  assert!(reg.inner.contains(&idx), errors::todo_not_found!());
+  *reg.inner.get(&idx)
 }
+
 public fun get_todo_mut(
   reg: &mut TodoRegistry,
   idx: u64, 
@@ -73,8 +77,8 @@ public fun get_todo_mut(
 ): &mut Todo {
   isOwner(reg,ctx);
   assert!(idx < reg.idx, errors::todo_not_found!());
-  assert!(reg.todos_map.contains(&idx), errors::todo_not_found!());
-  let mutref = reg.todos_map.get_mut(&idx);
+  assert!(reg.inner.contains(&idx), errors::todo_not_found!());
+  let mutref = reg.inner.get_mut(&idx);
   mutref
 }
 
@@ -93,8 +97,9 @@ public fun get_todo_and_update_status(reg: &mut TodoRegistry, idx: u64, status: 
 }
 public fun get_todo_and_delete(reg: &mut TodoRegistry, idx: u64, ctx: &mut TxContext){
   isOwner(reg,ctx);
-  assert!(reg.todos_map.contains(&idx), errors::todo_not_found!());
-  reg.todos_map.remove(&idx);
+  assert!(reg.inner.contains(&idx), errors::todo_not_found!());
+  let (_, todo) = reg.inner.remove(&idx);
+  let Todo { idx: _, title: _, completed: _ } = todo;
 }
 
 // Individual Todo methods
@@ -106,8 +111,8 @@ public fun create_todo(reg: &mut TodoRegistry, title: String, ctx: &mut TxContex
     title,
     completed: false,
   };
-  reg.todos_map.insert(reg.idx, move todo);
-  reg.todos_map.get(&reg.idx)
+  reg.inner.insert(reg.idx, move todo);
+  reg.inner.get(&reg.idx)
 } 
 
 public(package) fun amend_todo(self: &mut Todo, title: String){
